@@ -5,6 +5,7 @@ import by.rublevskaya.authservice.dto.UserRequest;
 import by.rublevskaya.authservice.dto.UserResponse;
 import by.rublevskaya.authservice.service.UserService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,38 +22,56 @@ import java.util.List;
 @RestController
 @RequestMapping("/users")
 @RequiredArgsConstructor
+@Slf4j
 public class UserController {
 
     private final UserService userService;
 
     @PostMapping("/register")
     public ResponseEntity<UserResponse> register(@RequestBody UserRequest request) {
-        return ResponseEntity.ok(userService.createUser(request));
+        log.info("Received request to register new user with username '{}'", request.getUsername());
+        UserResponse response = userService.createUser(request);
+        log.info("User with username '{}' successfully registered", response.getUsername());
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping
     public ResponseEntity<List<UserResponse>> getAllUsers() {
-        return ResponseEntity.ok(userService.getAllUsers());
+        log.info("Received request to fetch all users");
+        List<UserResponse> users = userService.getAllUsers();
+        log.info("Fetched {} user(s) successfully", users.size());
+        return ResponseEntity.ok(users);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
+        log.info("Received request to delete user with ID '{}'", id);
         userService.deleteUser(id);
+        log.info("User with ID '{}' successfully deleted", id);
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<UserResponse> getUserById(@PathVariable Long id) {
-        return ResponseEntity.ok(userService.getUserById(id));
+        log.info("Received request to fetch user with ID '{}'", id);
+        UserResponse userResponse = userService.getUserById(id);
+        log.info("Fetched user details for ID '{}': {}", id, userResponse);
+        return ResponseEntity.ok(userResponse);
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<UserResponse> updateUser(@PathVariable Long id, @RequestBody UserRequest request) {
-        return ResponseEntity.ok(userService.updateUser(id, request));
+        log.info("Received request to fully update user with ID '{}'", id);
+        UserResponse updatedUser = userService.updateUser(id, request);
+        log.info("User with ID '{}' successfully updated", id);
+        return ResponseEntity.ok(updatedUser);
     }
 
     @PatchMapping("/{id}")
     public ResponseEntity<UserResponse> partiallyUpdateUser(@PathVariable Long id, @RequestBody PartialUserRequest request) {
-        return ResponseEntity.ok(userService.partiallyUpdateUser(id, request));
+        log.info("Received request to partially update user with ID '{}'", id);
+        UserResponse updatedUser = userService.partiallyUpdateUser(id, request);
+        log.info("User with ID '{}' successfully partially updated", id);
+        return ResponseEntity.ok(updatedUser);
     }
 }
