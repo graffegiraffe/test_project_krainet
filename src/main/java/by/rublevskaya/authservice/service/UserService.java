@@ -3,6 +3,8 @@ package by.rublevskaya.authservice.service;
 import by.rublevskaya.authservice.dto.PartialUserRequest;
 import by.rublevskaya.authservice.dto.UserRequest;
 import by.rublevskaya.authservice.dto.UserResponse;
+import by.rublevskaya.authservice.exception.DataConflictException;
+import by.rublevskaya.authservice.exception.UserNotFoundException;
 import by.rublevskaya.authservice.model.User;
 import by.rublevskaya.authservice.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +20,13 @@ public class UserService {
     private final UserRepository userRepository;
 
     public UserResponse createUser(UserRequest request) {
+        if (userRepository.findByUsername(request.getUsername()).isPresent()) {
+            throw new DataConflictException("Username already exists");
+        }
+        if (userRepository.findByEmail(request.getEmail()).isPresent()) {
+            throw new DataConflictException("Email already exists");
+        }
+
         User user = User.builder()
                 .username(request.getUsername())
                 .password(request.getPassword())
@@ -38,6 +47,9 @@ public class UserService {
     }
 
     public void deleteUser(Long id) {
+        if (!userRepository.existsById(id)) {
+            throw new UserNotFoundException("User with ID " + id + " not found");
+        }
         userRepository.deleteById(id);
     }
 
@@ -52,12 +64,14 @@ public class UserService {
     }
 
     public UserResponse getUserById(Long id) {
-        User user = userRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("User not found!"));
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new UserNotFoundException("User with ID " + id + " not found"));
         return mapToResponse(user);
     }
 
     public UserResponse updateUser(Long id, UserRequest request) {
-        User user = userRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("User not found!"));
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new UserNotFoundException("User with ID " + id + " not found"));
         user.setUsername(request.getUsername());
         user.setPassword(request.getPassword());
         user.setEmail(request.getEmail());
@@ -69,7 +83,8 @@ public class UserService {
     }
 
     public UserResponse partiallyUpdateUser(Long id, PartialUserRequest request) {
-        User user = userRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("User not found!"));
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new UserNotFoundException("User with ID " + id + " not found"));
         if (request.getUsername() != null) user.setUsername(request.getUsername());
         if (request.getPassword() != null) user.setPassword(request.getPassword());
         if (request.getEmail() != null) user.setEmail(request.getEmail());
