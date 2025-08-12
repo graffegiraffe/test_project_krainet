@@ -5,6 +5,7 @@ import by.rublevskaya.authservice.dto.NotificationRequest;
 import by.rublevskaya.authservice.dto.PartialUserRequest;
 import by.rublevskaya.authservice.dto.UserRequest;
 import by.rublevskaya.authservice.dto.UserResponse;
+import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Value;
 import by.rublevskaya.authservice.exception.DataConflictException;
 import by.rublevskaya.authservice.exception.UserNotFoundException;
@@ -34,6 +35,7 @@ public class UserService {
     @Value("${admin.email}")
     private String adminEmail;
 
+    @Transactional
     public UserResponse createUser(UserRequest request) {
         log.info("Attempting to create user with username '{}'", request.getUsername());
         if (userRepository.findByUsername(request.getUsername()).isPresent()) {
@@ -83,24 +85,29 @@ public class UserService {
         return users;
     }
 
+    @Transactional
     public String deleteUser(Long id) {
-        log.info("Attempting to delete user with ID '{}'", id);
-        if (!userRepository.existsById(id)) {
-            log.error("User with ID '{}' not found for deletion", id);
-            throw new UserNotFoundException("User with ID " + id + " not found");
-        }
+        log.info("Attempting to delete user with Security ID '{}'", id);
+        Security security = securityRepository.findById(id)
+                .orElseThrow(() -> {
+                    log.error("Security entry with ID '{}' not found for deletion", id);
+                    return new UserNotFoundException("User with Security ID " + id + " not found");
+                });
 
-        Optional<User> user = userRepository.findById(id);
+        Long userId = security.getUserId();
+        Optional<User> user = userRepository.findById(userId);
+
         securityRepository.deleteById(id);
-        userRepository.deleteById(id);
+        user.ifPresent(userRepository::delete);
+        log.info("User with Security ID '{}' and User ID '{}' deleted successfully", id, userId);
 
-        log.info("User with ID '{}' deleted successfully", id);
         notificationClient.sendNotification(new NotificationRequest(
                 adminEmail,
                 "User deleted",
-                "User " + user.get().getUsername() + " was removed from the system."
+                "User " + (user.isPresent() ? user.get().getUsername() : "[unknown]") +
+                        " was removed from the system."
         ));
-        return "User with ID " + id + " deleted successfully!";
+        return "User with Security ID " + id + " and User ID " + userId + " deleted successfully!";
     }
 
     private UserResponse mapToResponse(User user) {
@@ -114,39 +121,53 @@ public class UserService {
     }
 
     public UserResponse getUserById(Long id) {
-        log.info("Fetching user with ID '{}'", id);
-        User user = userRepository.findById(id)
-                .orElseThrow(() ->{
-                    log.error("User with ID '{}' not found", id);
-                    return new UserNotFoundException("User with ID " + id + " not found");
-                });
-        log.info("User with ID '{}' retrieved successfully", id);
-        return mapToResponse(user);
+        log.info("Attempting to fetch user by ID: {}", id);
+        try {
+            UserResponse userResponse = securityRepository.findUserDetailsBySecurityId(id)
+                    .orElseThrow(() -> new UserNotFoundException("User with ID '" + id + "' not found"));
+
+            log.info("Successfully fetched user: {}", userResponse.getUsername());
+            return userResponse;
+        } catch (UserNotFoundException e) {
+            log.error("User with ID '{}' not found. Error: {}", id, e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("An unexpected error occurred while fetching user with ID '{}'. Error: {}", id, e.getMessage(), e);
+            throw new RuntimeException("An unexpected error occurred. Please try again later.");
+        }
     }
 
+    @Transactional
     public UserResponse updateUser(Long id, UserRequest request) {
-        log.info("Updating user with ID '{}'", id);
-        User user = userRepository.findById(id)
+        log.info("Attempting to update user with Security ID '{}'", id);
+
+        Security security = securityRepository.findById(id)
                 .orElseThrow(() -> {
-                    log.error("User with ID '{}' not found for update", id);
-                    return new UserNotFoundException("User with ID " + id + " not found");
+                    log.error("Security entry with ID '{}' not found for update", id);
+                    return new UserNotFoundException("User with Security ID " + id + " not found");
                 });
+
+        Long userId = security.getUserId();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> {
+                    log.error("Associated User with ID '{}' not found for update", userId);
+                    return new UserNotFoundException("Associated User with ID " + userId + " not found");
+                });
+
         user.setUsername(request.getUsername());
         user.setEmail(request.getEmail());
         user.setFirstName(request.getFirstName());
         user.setLastName(request.getLastName());
         user.setUpdated(LocalDateTime.now());
         user.setRole("USER");
-
-        Security security = securityRepository.findByLogin(user.getUsername());
-        if (security != null) {
-            security.setPassword(request.getPassword());
-            security.setUpdated(LocalDateTime.now());
-            securityRepository.save(security);
-        }
-
         userRepository.save(user);
-        log.info("User with ID '{}' updated successfully", id);
+
+        security.setLogin(request.getUsername());
+        security.setPassword(passwordEncoder.encode(request.getPassword()));
+        security.setUpdated(LocalDateTime.now());
+        securityRepository.save(security);
+
+        log.info("User with Security ID '{}' and User ID '{}' updated successfully", id, userId);
 
         notificationClient.sendNotification(new NotificationRequest(
                 adminEmail,
@@ -156,64 +177,53 @@ public class UserService {
         return mapToResponse(user);
     }
 
+    @Transactional
     public UserResponse partiallyUpdateUser(Long id, PartialUserRequest request) {
-        log.info("Partially updating user with ID '{}'", id);
-        User user = userRepository.findById(id)
+        log.info("Attempting to partially update user with Security ID '{}'", id);
+        Security security = securityRepository.findById(id)
                 .orElseThrow(() -> {
-                    log.error("User with ID '{}' not found for partial update", id);
-                    return new UserNotFoundException("User with ID " + id + " not found");
+                    log.error("Security entry with ID '{}' not found for partial update", id);
+                    return new UserNotFoundException("User with Security ID " + id + " not found");
+                });
+        Long userId = security.getUserId();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> {
+                    log.error("Associated User with ID '{}' not found for partial update", userId);
+                    return new UserNotFoundException("Associated User with ID " + userId + " not found");
                 });
 
-        if (request.getUsername() != null) {
-            log.info("Updating username for User ID '{}'", id);
+        if (request.getUsername() != null && !request.getUsername().equals(security.getLogin())) {
+            log.info("Updating username for Security ID '{}' and User ID '{}'", id, userId);
+            security.setLogin(request.getUsername());
             user.setUsername(request.getUsername());
-            Security security = securityRepository.findByLogin(user.getUsername());
-            if (security != null) {
-                security.setLogin(request.getUsername());
-                securityRepository.save(security);
-            }
         }
         if (request.getPassword() != null) {
-            log.info("Updating password for User ID '{}'", id);
-            Security security = securityRepository.findByLogin(user.getUsername());
-            if (security != null) {
-                security.setPassword(request.getPassword());
-                security.setUpdated(LocalDateTime.now());
-                securityRepository.save(security);
-                log.info("Password updated for User ID '{}'", id);
-            } else {
-                log.error("No security record found for User ID '{}'", id);
-                throw new UserNotFoundException("Security record for User ID " + id + " not found");
-            }
+            log.info("Updating password for Security ID '{}'", id);
+            security.setPassword(passwordEncoder.encode(request.getPassword()));
+            security.setUpdated(LocalDateTime.now());
         }
         if (request.getEmail() != null) {
-            log.info("Updating email for User ID '{}'", id);
+            log.info("Updating email for User ID '{}'", userId);
             user.setEmail(request.getEmail());
         }
         if (request.getFirstName() != null) {
-            log.info("Updating firstName for User ID '{}'", id);
+            log.info("Updating firstName for User ID '{}'", userId);
             user.setFirstName(request.getFirstName());
         }
         if (request.getLastName() != null) {
-            log.info("Updating lastName for User ID '{}'", id);
+            log.info("Updating lastName for User ID '{}'", userId);
             user.setLastName(request.getLastName());
         }
 
+        securityRepository.save(security);
         userRepository.save(user);
-        log.info("User with ID '{}' partially updated successfully", id);
+        log.info("User with Security ID '{}' and User ID '{}' partially updated successfully", id, userId);
+
         notificationClient.sendNotification(new NotificationRequest(
                 adminEmail,
                 "User Updated",
                 "User with username: " + user.getUsername() + " has been successfully partially updated."
         ));
         return mapToResponse(user);
-    }
-
-    public Long getUserIdByUsername(String username) {
-        Security user = securityRepository.findByLogin(username);
-        if (user == null) {
-            throw new UsernameNotFoundException("User not found with username: " + username);
-        }
-        return user.getId();
     }
 }

@@ -83,11 +83,20 @@ public class UserController {
     }
 
     private void validateOwnership(Long id, Authentication authentication) {
-        String username = authentication.getName();
-        Long userId = userService.getUserIdByUsername(username);
-        if (!id.equals(userId)) {
-            log.warn("Access denied for user '{}', attempting to access data for user ID '{}'", username, id);
+        var authorities = authentication.getAuthorities();
+        boolean isAdmin = authorities.stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        if (isAdmin) {
+            log.info("Access granted: User '{}' has ADMIN role", authentication.getName());
+            return;
+        }
+
+        String currentUsername = authentication.getName();
+        UserResponse userResponse = userService.getUserById(id);
+        if (userResponse == null || !userResponse.getUsername().equalsIgnoreCase(currentUsername)) {
+            log.warn("Access denied for user '{}', attempting to access data for user ID '{}'", currentUsername, id);
             throw new AccessDeniedException("You don't have permission to access this resource.");
         }
+        log.info("Access granted: User '{}' owns the resource with ID '{}'", currentUsername, id);
     }
 }
