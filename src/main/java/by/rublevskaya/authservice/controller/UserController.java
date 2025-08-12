@@ -46,12 +46,12 @@ public class UserController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteUser(@PathVariable Long id, Authentication authentication) {
+    public ResponseEntity<String> deleteUser(@PathVariable Long id, Authentication authentication) {
         log.info("Received request to delete user with ID '{}'", id);
         validateOwnership(id, authentication);
-        userService.deleteUser(id);
+        String resultMessage = userService.deleteUser(id);
         log.info("User with ID '{}' successfully deleted", id);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(resultMessage);
     }
 
     @GetMapping("/{id}")

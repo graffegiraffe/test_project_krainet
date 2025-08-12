@@ -1,8 +1,11 @@
 package by.rublevskaya.authservice.service;
 
+import by.rublevskaya.authservice.clients.NotificationClient;
+import by.rublevskaya.authservice.dto.NotificationRequest;
 import by.rublevskaya.authservice.dto.PartialUserRequest;
 import by.rublevskaya.authservice.dto.UserRequest;
 import by.rublevskaya.authservice.dto.UserResponse;
+import org.springframework.beans.factory.annotation.Value;
 import by.rublevskaya.authservice.exception.DataConflictException;
 import by.rublevskaya.authservice.exception.UserNotFoundException;
 import by.rublevskaya.authservice.model.Security;
@@ -17,6 +20,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -26,6 +30,9 @@ public class UserService {
     private final SecurityRepository securityRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final NotificationClient notificationClient;
+    @Value("${admin.email}")
+    private String adminEmail;
 
     public UserResponse createUser(UserRequest request) {
         log.info("Attempting to create user with username '{}'", request.getUsername());
@@ -56,8 +63,13 @@ public class UserService {
         security.setUserId(user.getId());
         securityRepository.save(security);
 
-
         log.info("User with ID '{}' created successfully", user.getId());
+
+        notificationClient.sendNotification(new NotificationRequest(
+                adminEmail,
+                "A new user has been created",
+                "User " + request.getUsername() + " was successfully created with email " + request.getEmail()
+        ));
         return mapToResponse(user);
     }
 
@@ -71,15 +83,24 @@ public class UserService {
         return users;
     }
 
-    public void deleteUser(Long id) {
+    public String deleteUser(Long id) {
         log.info("Attempting to delete user with ID '{}'", id);
         if (!userRepository.existsById(id)) {
             log.error("User with ID '{}' not found for deletion", id);
             throw new UserNotFoundException("User with ID " + id + " not found");
         }
+
+        Optional<User> user = userRepository.findById(id);
         securityRepository.deleteById(id);
         userRepository.deleteById(id);
+
         log.info("User with ID '{}' deleted successfully", id);
+        notificationClient.sendNotification(new NotificationRequest(
+                adminEmail,
+                "User deleted",
+                "User " + user.get().getUsername() + " was removed from the system."
+        ));
+        return "User with ID " + id + " deleted successfully!";
     }
 
     private UserResponse mapToResponse(User user) {
@@ -126,6 +147,12 @@ public class UserService {
 
         userRepository.save(user);
         log.info("User with ID '{}' updated successfully", id);
+
+        notificationClient.sendNotification(new NotificationRequest(
+                adminEmail,
+                "User Updated",
+                "User with username: " + user.getUsername() + " has been successfully updated."
+        ));
         return mapToResponse(user);
     }
 
@@ -174,6 +201,11 @@ public class UserService {
 
         userRepository.save(user);
         log.info("User with ID '{}' partially updated successfully", id);
+        notificationClient.sendNotification(new NotificationRequest(
+                adminEmail,
+                "User Updated",
+                "User with username: " + user.getUsername() + " has been successfully partially updated."
+        ));
         return mapToResponse(user);
     }
 
