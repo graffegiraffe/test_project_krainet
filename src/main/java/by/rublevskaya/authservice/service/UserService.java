@@ -5,12 +5,15 @@ import by.rublevskaya.authservice.dto.UserRequest;
 import by.rublevskaya.authservice.dto.UserResponse;
 import by.rublevskaya.authservice.exception.DataConflictException;
 import by.rublevskaya.authservice.exception.UserNotFoundException;
+import by.rublevskaya.authservice.model.Security;
 import by.rublevskaya.authservice.model.User;
+import by.rublevskaya.authservice.repository.SecurityRepository;
 import by.rublevskaya.authservice.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -18,7 +21,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @RequiredArgsConstructor
 public class UserService {
-
+    private final SecurityRepository securityRepository;
     private final UserRepository userRepository;
 
     public UserResponse createUser(UserRequest request) {
@@ -34,13 +37,22 @@ public class UserService {
 
         User user = User.builder()
                 .username(request.getUsername())
-                .password(request.getPassword())
                 .email(request.getEmail())
                 .firstName(request.getFirstName())
                 .lastName(request.getLastName())
                 .role("USER")
+                .created_at(LocalDateTime.now())
+                .updated(LocalDateTime.now())
                 .build();
-        userRepository.save(user);
+        user = userRepository.save(user);
+
+        Security security = new Security();
+        security.setLogin(request.getUsername());
+        security.setPassword(request.getPassword());
+        security.setRole(user.getRole());
+        security.setUserId(user.getId());
+        securityRepository.save(security);
+
 
         log.info("User with ID '{}' created successfully", user.getId());
         return mapToResponse(user);
@@ -62,6 +74,7 @@ public class UserService {
             log.error("User with ID '{}' not found for deletion", id);
             throw new UserNotFoundException("User with ID " + id + " not found");
         }
+        securityRepository.deleteById(id);
         userRepository.deleteById(id);
         log.info("User with ID '{}' deleted successfully", id);
     }
@@ -73,7 +86,6 @@ public class UserService {
         response.setEmail(user.getEmail());
         response.setFirstName(user.getFirstName());
         response.setLastName(user.getLastName());
-        response.setRole(user.getRole());
         return response;
     }
 
@@ -96,11 +108,19 @@ public class UserService {
                     return new UserNotFoundException("User with ID " + id + " not found");
                 });
         user.setUsername(request.getUsername());
-        user.setPassword(request.getPassword());
         user.setEmail(request.getEmail());
         user.setFirstName(request.getFirstName());
         user.setLastName(request.getLastName());
+        user.setUpdated(LocalDateTime.now());
         user.setRole("USER");
+
+        Security security = securityRepository.findByLogin(user.getUsername());
+        if (security != null) {
+            security.setPassword(request.getPassword());
+            security.setUpdated(LocalDateTime.now());
+            securityRepository.save(security);
+        }
+
         userRepository.save(user);
         log.info("User with ID '{}' updated successfully", id);
         return mapToResponse(user);
@@ -117,10 +137,24 @@ public class UserService {
         if (request.getUsername() != null) {
             log.info("Updating username for User ID '{}'", id);
             user.setUsername(request.getUsername());
+            Security security = securityRepository.findByLogin(user.getUsername());
+            if (security != null) {
+                security.setLogin(request.getUsername());
+                securityRepository.save(security);
+            }
         }
         if (request.getPassword() != null) {
             log.info("Updating password for User ID '{}'", id);
-            user.setPassword(request.getPassword());
+            Security security = securityRepository.findByLogin(user.getUsername());
+            if (security != null) {
+                security.setPassword(request.getPassword());
+                security.setUpdated(LocalDateTime.now());
+                securityRepository.save(security);
+                log.info("Password updated for User ID '{}'", id);
+            } else {
+                log.error("No security record found for User ID '{}'", id);
+                throw new UserNotFoundException("Security record for User ID " + id + " not found");
+            }
         }
         if (request.getEmail() != null) {
             log.info("Updating email for User ID '{}'", id);

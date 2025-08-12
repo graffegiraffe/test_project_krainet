@@ -103,11 +103,11 @@
                 <artifactId>flyway-maven-plugin</artifactId>
                 <version>9.22.3</version>
                 <configuration>
-                    <url>jdbc:postgresql://localhost:5432/postgres?currentSchema=medical_assistant</url>
+                    <url>jdbc:postgresql://localhost:5432/postgres?currentSchema=auth_service</url>
                     <user>katusha</user>
                     <password>katusha</password>
                     <schemas>
-                        <schema>medical_assistant</schema>
+                        <schema>auth_service</schema>
                     </schemas>
                     <locations>
                         <location>filesystem:src/main/resources/db/migration</location>
