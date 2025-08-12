@@ -7,6 +7,8 @@ import by.rublevskaya.authservice.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -44,34 +46,48 @@ public class UserController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
+    public ResponseEntity<Void> deleteUser(@PathVariable Long id, Authentication authentication) {
         log.info("Received request to delete user with ID '{}'", id);
+        validateOwnership(id, authentication);
         userService.deleteUser(id);
         log.info("User with ID '{}' successfully deleted", id);
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<UserResponse> getUserById(@PathVariable Long id) {
+    public ResponseEntity<UserResponse> getUserById(@PathVariable Long id, Authentication authentication
+    ) {
         log.info("Received request to fetch user with ID '{}'", id);
+        validateOwnership(id, authentication);
         UserResponse userResponse = userService.getUserById(id);
         log.info("Fetched user details for ID '{}': {}", id, userResponse);
         return ResponseEntity.ok(userResponse);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<UserResponse> updateUser(@PathVariable Long id, @RequestBody UserRequest request) {
+    public ResponseEntity<UserResponse> updateUser(@PathVariable Long id, @RequestBody UserRequest request, Authentication authentication) {
         log.info("Received request to fully update user with ID '{}'", id);
+        validateOwnership(id, authentication);
         UserResponse updatedUser = userService.updateUser(id, request);
         log.info("User with ID '{}' successfully updated", id);
         return ResponseEntity.ok(updatedUser);
     }
 
     @PatchMapping("/{id}")
-    public ResponseEntity<UserResponse> partiallyUpdateUser(@PathVariable Long id, @RequestBody PartialUserRequest request) {
+    public ResponseEntity<UserResponse> partiallyUpdateUser(@PathVariable Long id, @RequestBody PartialUserRequest request, Authentication authentication) {
         log.info("Received request to partially update user with ID '{}'", id);
+        validateOwnership(id, authentication);
         UserResponse updatedUser = userService.partiallyUpdateUser(id, request);
         log.info("User with ID '{}' successfully partially updated", id);
         return ResponseEntity.ok(updatedUser);
+    }
+
+    private void validateOwnership(Long id, Authentication authentication) {
+        String username = authentication.getName();
+        Long userId = userService.getUserIdByUsername(username);
+        if (!id.equals(userId)) {
+            log.warn("Access denied for user '{}', attempting to access data for user ID '{}'", username, id);
+            throw new AccessDeniedException("You don't have permission to access this resource.");
+        }
     }
 }

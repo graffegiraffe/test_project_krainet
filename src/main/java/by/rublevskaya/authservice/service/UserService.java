@@ -11,6 +11,8 @@ import by.rublevskaya.authservice.repository.SecurityRepository;
 import by.rublevskaya.authservice.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -23,6 +25,7 @@ import java.util.stream.Collectors;
 public class UserService {
     private final SecurityRepository securityRepository;
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
     public UserResponse createUser(UserRequest request) {
         log.info("Attempting to create user with username '{}'", request.getUsername());
@@ -48,7 +51,7 @@ public class UserService {
 
         Security security = new Security();
         security.setLogin(request.getUsername());
-        security.setPassword(request.getPassword());
+        security.setPassword(passwordEncoder.encode(request.getPassword()));
         security.setRole(user.getRole());
         security.setUserId(user.getId());
         securityRepository.save(security);
@@ -172,5 +175,13 @@ public class UserService {
         userRepository.save(user);
         log.info("User with ID '{}' partially updated successfully", id);
         return mapToResponse(user);
+    }
+
+    public Long getUserIdByUsername(String username) {
+        Security user = securityRepository.findByLogin(username);
+        if (user == null) {
+            throw new UsernameNotFoundException("User not found with username: " + username);
+        }
+        return user.getId();
     }
 }
