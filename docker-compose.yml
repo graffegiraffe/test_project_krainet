@@ -1,0 +1,56 @@
+version: '3.8'
+services:
+  auth-service:
+    build:
+      context: ./path-to-auth-project
+    container_name: auth-service
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://auth-database:5432/postgres
+      SPRING_DATASOURCE_USERNAME: testuser
+      SPRING_DATASOURCE_PASSWORD: testpassword
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      JWT_SECRET: "your_jwt_secret_key"
+    depends_on:
+      - auth-database
+    networks:
+      - backend-network
+
+  notification-service:
+    build:
+      context: ./path-to-notification-project
+    container_name: notification-service
+    ports:
+      - "8081:8080"
+    environment:
+      SERVER_PORT: 8081
+      SPRING_MAIL_HOST: "smtp.gmail.com"
+      SPRING_MAIL_PORT: 587
+      SPRING_MAIL_USERNAME: "your_email@gmail.com"
+      SPRING_MAIL_PASSWORD: "your_app_password"
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "true"
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "true"
+      SPRING_MAIL_PROPERTIES_MAIL_DEBUG: "true"
+      CONNECT_TO_AUTH_SERVICE_URL: "http://auth-service:8080"
+    depends_on:
+      - auth-service
+    networks:
+      - backend-network
+
+  auth-database:
+    image: postgres:15.2
+    container_name: auth-database
+    restart: always
+    environment:
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpassword
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    networks:
+      - backend-network
+
+networks:
+  backend-network:
+    driver: bridge
